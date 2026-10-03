@@ -74,9 +74,6 @@ class Actividad(Base):
     tipo: Mapped[str]
     fecha: Mapped[date]
 
-
-# ---------- Traza (lo que escribe el motor) ----------
-
 class Ejecucion(Base):
     """Un clic en 'Ejecutar' (o una reasignación manual)."""
     __tablename__ = "ejecuciones"
@@ -98,7 +95,7 @@ class Asignacion(Base):
     reemplaza_a_id: Mapped[int | None] = mapped_column(ForeignKey("asignaciones.id"))
     vigente: Mapped[bool] = mapped_column(default=True)
     explicacion: Mapped[dict] = mapped_column(JSON, default=dict)
-    motivo: Mapped[str | None] = mapped_column(Text)  # texto libre en reasignaciones manuales
+    motivo: Mapped[str | None] = mapped_column(Text) 
     creado_en: Mapped[datetime] = mapped_column(default=ahora)
 
     __table_args__ = (
