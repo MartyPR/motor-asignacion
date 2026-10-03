@@ -190,3 +190,15 @@ def resumen_calidad(datos: dict) -> dict:
                 conteo[tipo] = conteo.get(tipo, 0) + 1
         resumen[tabla] = dict(sorted(conteo.items()))
     return resumen
+
+
+def carga_desde_actividad(registros, actividad) -> dict:
+    activos = {r["id"] for r in registros if r["estado"] in ("asignado", "en_gestion")}
+    dueno = {}
+    for a in sorted(actividad, key=lambda a: (a["fecha"], a["id"])):
+        if a["registro_id"] in activos:
+            dueno[a["registro_id"]] = a["usuario_id"]
+    carga = {}
+    for usuario_id in dueno.values():
+        carga[usuario_id] = carga.get(usuario_id, 0) + 1
+    return carga
