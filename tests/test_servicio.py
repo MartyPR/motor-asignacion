@@ -153,8 +153,6 @@ def test_reasignar_a_un_ausente_se_permite_con_advertencia(s):
     assert a.explicacion["advertencias"] == r["advertencias"]
 
 
-# ---------------------------------------------------------------- listados
-
 def test_listados_para_la_consola(s):
     assert len(servicio.listar_pendientes(s)) == 71
     v = {x["id"]: x for x in servicio.listar_vendedores(s, HOY)}

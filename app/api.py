@@ -92,3 +92,17 @@ def reasignar(body: ReasignarIn, s=Depends(get_db)):
 @app.get("/api/ejecuciones")
 def ejecuciones(s=Depends(get_db)):
     return servicio.listar_ejecuciones(s)
+
+@app.get("/api/buscar")
+def buscar(q: str, s=Depends(get_db)):
+    return servicio.buscar_registros(s, q)
+
+
+@app.get("/api/registros/{registro_id}/explicacion")
+def explicacion(registro_id: int, s=Depends(get_db)):
+    return servicio.explicar(s, registro_id)
+
+
+@app.get("/api/auditoria")
+def auditoria(s=Depends(get_db)):
+    return servicio.auditar(s)

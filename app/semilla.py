@@ -4,7 +4,6 @@ from app.models import Actividad, Ausencia, Equipo, Registro, Usuario
 
 
 def sembrar(s: Session, datos: dict) -> None:
-    # Un duplicado apunta a su original: se inserta después para respetar la foreign key.
     registros = sorted(datos["registros"], key=lambda r: (r["duplicado_de_id"] is not None, r["id"]))
 
     s.add_all([Equipo(**e) for e in datos["equipos"]])

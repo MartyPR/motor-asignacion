@@ -6,10 +6,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import carga as carga_mod
-from app.models import Actividad, Asignacion, Ausencia, Ejecucion, Registro, Usuario
+from app.auditoria import auditar_datos
+from app.models import Actividad, Asignacion, Ausencia, Ejecucion, LlamadaIA, Registro, Usuario
 from app.motor import Parametros, Plan, ausencia_vigente, motivo_no_elegible, planificar
+from app.narrativa import narrar
 from app.senales import senales_de_nota
-
 
 class ErrorNegocio(Exception):
     def __init__(self, mensaje: str, status: int = 422):
@@ -265,3 +266,118 @@ def listar_ejecuciones(s: Session, limite: int = 50) -> list[dict]:
         "creado_en": e.creado_en,
         "asignados": conteo.get(e.id, 0), "no_asignados": len(e.no_asignados or []),
     } for e in ejecuciones]
+
+
+def explicar(s: Session, registro_id: int) -> dict:
+    """Responde '¿por qué este registro terminó acá?' reconstruyendo todo desde la traza."""
+    registro = s.get(Registro, registro_id)
+    if registro is None:
+        raise ErrorNegocio(f"El registro {registro_id} no existe", 404)
+
+    ctx = contexto(s)
+    nombres = {u["id"]: u["nombre"] for u in ctx["usuarios"]}
+
+    filas = s.execute(
+        select(Asignacion, Ejecucion)
+        .join(Ejecucion, Asignacion.ejecucion_id == Ejecucion.id)
+        .where(Asignacion.registro_id == registro_id)
+        .order_by(Asignacion.id)
+    ).all()
+
+    historial = []
+    for a, e in filas:
+        expl = a.explicacion or {}
+        item = {
+            "asignacion_id": a.id,
+            "usuario_id": a.usuario_id,
+            "usuario": nombres.get(a.usuario_id),
+            "vigente": a.vigente,
+            "reemplaza_a_id": a.reemplaza_a_id,
+            "creado_en": a.creado_en,
+            "motivo": a.motivo,
+            "explicacion": expl,
+            "ejecucion": {
+                "id": e.id, "metodo": e.metodo, "parametros": e.parametros,
+                "fecha_referencia": e.fecha_referencia, "ejecutado_por": e.ejecutado_por,
+                "ejecutado_por_nombre": nombres.get(e.ejecutado_por), "creado_en": e.creado_en,
+            },
+        }
+        if expl.get("tipo") == "reasignacion_manual":
+            item["dueno_anterior_nombre"] = nombres.get(expl["dueno_anterior"].get("usuario_id"))
+        historial.append(item)
+
+    rechazos = []
+    for e in s.scalars(select(Ejecucion).order_by(Ejecucion.id)):
+        for n in (e.no_asignados or []):
+            if n.get("registro_id") == registro_id:
+                rechazos.append({
+                    "ejecucion_id": e.id, "creado_en": e.creado_en,
+                    "ejecutado_por_nombre": nombres.get(e.ejecutado_por), "motivo": n["motivo"],
+                })
+
+    actividad_previa = [
+        {"usuario_id": a.usuario_id, "usuario": nombres.get(a.usuario_id), "tipo": a.tipo, "fecha": a.fecha}
+        for a in s.scalars(select(Actividad).where(Actividad.registro_id == registro_id)
+                           .order_by(Actividad.fecha, Actividad.id))
+    ]
+
+    llamadas = [
+        {"id": c.id, "modelo": c.modelo, "creado_en": c.creado_en,
+         "respuesta_valida": c.respuesta_valida, "error": c.error}
+        for c in s.scalars(select(LlamadaIA).where(LlamadaIA.registro_id == registro_id)
+                           .order_by(LlamadaIA.id))
+    ]
+
+    vigente = next((h for h in historial if h["vigente"]), None)
+    if vigente:
+        dueno = {"usuario_id": vigente["usuario_id"], "nombre": vigente["usuario"], "origen": "asignacion"}
+    elif ctx["duenos"].get(registro_id) is not None:
+        uid = ctx["duenos"][registro_id]
+        dueno = {"usuario_id": uid, "nombre": nombres.get(uid), "origen": "actividad"}
+    else:
+        dueno = None
+
+    data = {
+        "registro": _fila(registro),
+        "dueno_actual": dueno,
+        "historial": historial,
+        "rechazos": rechazos,
+        "actividad_previa": actividad_previa,
+        "llamadas_ia": llamadas,
+    }
+    data["narrativa"] = narrar(data)
+    return data
+
+
+def buscar_registros(s: Session, texto: str, limite: int = 20) -> list[dict]:
+    """Búsqueda por razón social, NIT o número de registro (para abrir uno desde la consola)."""
+    texto = (texto or "").strip()
+    if not texto:
+        return []
+    condicion = Registro.razon_social.ilike(f"%{texto}%") | Registro.nit.contains(texto)
+    if texto.isdigit():
+        condicion = condicion | (Registro.id == int(texto))
+    filas = s.scalars(select(Registro).where(condicion).order_by(Registro.id).limit(limite)).all()
+    duenos = contexto(s)["duenos"]
+    nombres = {u.id: u.nombre for u in s.scalars(select(Usuario))}
+    return [{
+        "id": r.id, "razon_social": r.razon_social, "nit": r.nit, "estado": r.estado, "zona": r.zona,
+        "responsable": nombres.get(duenos.get(r.id)),
+    } for r in filas]
+
+
+def auditar(s: Session) -> dict:
+    """Verifica la integridad de toda la traza. Devuelve ok=True si no hay problemas."""
+    registros = [_fila(r) for r in s.scalars(select(Registro))]
+    asignaciones = [_fila(a) for a in s.scalars(select(Asignacion))]
+    ejecuciones = [_fila(e) for e in s.scalars(select(Ejecucion))]
+    problemas = auditar_datos(registros, asignaciones, ejecuciones)
+    return {
+        "ok": not problemas,
+        "problemas": problemas,
+        "revisado": {
+            "asignaciones": len(asignaciones),
+            "ejecuciones": len(ejecuciones),
+            "registros_con_asignacion": len({a["registro_id"] for a in asignaciones}),
+        },
+    }
