@@ -1,5 +1,5 @@
 
-Update version 3
+Update version 4
 ¿Los líderes reciben registros?
 No, salvo incluir_lideres=True. El admin nunca
 ¿Cómo se deriva el segmento de un registro?
@@ -34,3 +34,27 @@ No, salvo incluir_lideres=True. El admin nunca
 |Zona |	Estricta por defecto (configurable) |
 |Segmento |	Preferencia, no obligación (configurable) |
 |Carga actual |	Se deduce de actividad |
+
+
+# 1. ¿Quién está disponible hoy?
+curl -s "localhost:8000/api/vendedores?fecha=2026-10-03"
+
+# 2. Previsualizar (no escribe nada). Guarda la "huella" de la respuesta
+curl -s -X POST localhost:8000/api/previsualizar \
+  -H "Content-Type: application/json" \
+  -d '{"metodo":"scoring","fecha_referencia":"2026-10-03"}'
+
+# 3. Ejecutar, pasando la huella de la previsualización
+curl -s -X POST localhost:8000/api/ejecutar \
+  -H "Content-Type: application/json" \
+  -d '{"parametros":{"metodo":"scoring","fecha_referencia":"2026-10-03"},"operador_id":1,"huella_esperada":"PEGA_AQUI_LA_HUELLA"}'
+
+# 4. Reasignar un registro de Nicolás (el usuario inactivo) a Catalina
+curl -s -X POST localhost:8000/api/reasignar \
+  -H "Content-Type: application/json" \
+  -d '{"registro_id":79,"usuario_id":13,"operador_id":1,"motivo":"Nicolás está inactivo","fecha_referencia":"2026-10-03"}'
+
+# 5. Historial de ejecuciones
+curl -s localhost:8000/api/ejecuciones
+
+

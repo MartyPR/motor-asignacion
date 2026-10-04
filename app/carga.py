@@ -191,14 +191,24 @@ def resumen_calidad(datos: dict) -> dict:
         resumen[tabla] = dict(sorted(conteo.items()))
     return resumen
 
-
-def carga_desde_actividad(registros, actividad) -> dict:
+def duenos_actuales(registros, actividad, vigentes=None) -> dict:
     activos = {r["id"] for r in registros if r["estado"] in ("asignado", "en_gestion")}
-    dueno = {}
+    duenos = {}
     for a in sorted(actividad, key=lambda a: (a["fecha"], a["id"])):
         if a["registro_id"] in activos:
-            dueno[a["registro_id"]] = a["usuario_id"]
+            duenos[a["registro_id"]] = a["usuario_id"]
+    for registro_id, usuario_id in (vigentes or {}).items():
+        if registro_id in activos:
+            duenos[registro_id] = usuario_id
+    return duenos
+
+
+def carga_con_asignaciones(registros, actividad, vigentes=None) -> dict:
     carga = {}
-    for usuario_id in dueno.values():
+    for usuario_id in duenos_actuales(registros, actividad, vigentes).values():
         carga[usuario_id] = carga.get(usuario_id, 0) + 1
     return carga
+
+
+def carga_desde_actividad(registros, actividad) -> dict:
+    return carga_con_asignaciones(registros, actividad)

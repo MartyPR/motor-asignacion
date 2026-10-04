@@ -7,6 +7,8 @@ from app.senales import senales_de_nota
 METODOS = ("round_robin", "balanceado", "scoring")
 
 
+
+
 @dataclass
 class Parametros:
     metodo: str
@@ -229,3 +231,12 @@ def planificar(registros, usuarios, ausencias, carga_inicial, p: Parametros) -> 
 
     plan.carga_final = dict(carga)
     return plan
+
+ausencia_vigente = _ausencia_vigente
+
+def motivo_no_elegible(u, ausencias_usuario, carga, registro, fecha: date):
+    """Por qué un usuario NO sería elegible para este registro (None si lo sería).
+    Se usa en reasignaciones manuales para dejar advertencias en la traza."""
+    p = Parametros(metodo="balanceado", fecha_referencia=fecha,
+                   incluir_lideres=True, zona_estricta=True, segmento_estricto=False)
+    return _motivo_descarte(u, ausencias_usuario, carga, p, registro)

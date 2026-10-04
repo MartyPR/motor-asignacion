@@ -136,3 +136,18 @@ def test_senales_de_nota():
     assert senales_de_nota("Ya lo contactamos en marzo y pidió que no insistiéramos.") == ["no_insistir"]
     assert senales_de_nota("Insistió en hablar con alguien senior.") == ["senior"]
     assert senales_de_nota(None) == []
+
+def test_las_asignaciones_vigentes_pisan_a_la_actividad(datos):
+    regs = datos["registros"]
+    ci0 = carga.carga_con_asignaciones(regs, datos["actividad"])
+    duenos = carga.duenos_actuales(regs, datos["actividad"])
+    rid = next(r for r, u in duenos.items() if u == 4)
+    ci1 = carga.carga_con_asignaciones(regs, datos["actividad"], {rid: 8})
+    assert ci1[4] == ci0[4] - 1 and ci1[8] == ci0[8] + 1
+    assert sum(ci1.values()) == sum(ci0.values())
+
+
+def test_vigente_sobre_registro_nuevo_se_ignora_hasta_que_pase_a_asignado(datos):
+    nuevo = next(r["id"] for r in datos["registros"] if r["estado"] == "nuevo")
+    ci = carga.carga_con_asignaciones(datos["registros"], datos["actividad"], {nuevo: 8})
+    assert sum(ci.values()) == 76
